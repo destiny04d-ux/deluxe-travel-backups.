@@ -1,0 +1,72 @@
+name: Daily Neon backup
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 1 * * *' # About 02:17 in Africa/Lagos; GitHub can delay scheduled jobs.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deluxe-travel-live-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_DATABASE: deluxe_travel_live
+      EXPECTED_HOST: ep-odd-boat-bfu600w6.c-5.us-west-2.aws.neon.tech
+      POSTGRES_IMAGE: postgres:18-bookworm
+      MAX_BACKUP_MIB: '25'
+    steps:
+      - name: Require a private repository and the default branch
+        env:
+          REPOSITORY_IS_PRIVATE: ${{ github.event.repository.private }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [ "$REPOSITORY_IS_PRIVATE" != "true" ]; then
+            echo "::error::Backups must run in a private repository."
+            exit 1
+          fi
+          if [ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::error::Run this workflow from the repository's default branch."
+            exit 1
+          fi
+
+      - name: Get the backup scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Get the PostgreSQL 18 client image
+        run: docker pull "$POSTGRES_IMAGE"
+
+      - name: Export and validate the database backup
+        env:
+          NEON_BACKUP_DATABASE_URL: ${{ secrets.NEON_BACKUP_DATABASE_URL }}
+        run: node scripts/backup.mjs
+
+      - name: Test recovery in an isolated temporary database
+        run: node scripts/restore-check.mjs
+
+      - name: Store the verified backup for 14 days
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: deluxe-neon-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/neon-backup-output/*.backup
+            ${{ runner.temp }}/neon-backup-output/SHA256SUMS
+            ${{ runner.temp }}/neon-backup-output/manifest.json
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0

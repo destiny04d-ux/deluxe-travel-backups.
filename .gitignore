@@ -1,0 +1,13 @@
+# Customer exports and credentials belong outside Git history.
+*.backup
+*.dump
+*.sql
+*.pgpass
+.pgpass
+.env
+.env.*
+!.env.example
+backup-output/
+neon-backup-output/
+node_modules/
+*.log
