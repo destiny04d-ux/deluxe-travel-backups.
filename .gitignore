@@ -9,5 +9,9 @@
 !.env.example
 backup-output/
 neon-backup-output/
+neon-backup-encrypted/
+*.gpg
+*.tar
+*recovery-key*.txt
 node_modules/
 *.log
